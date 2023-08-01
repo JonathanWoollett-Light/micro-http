@@ -56,6 +56,18 @@ impl ServerRequest {
         let http_response = callable(self.inner());
         ServerResponse::new(http_response, self.id)
     }
+
+    /// Calls the function provided on the inner request to obtain the response.
+    /// The response is then wrapped in a `ServerResponse`.
+    ///
+    /// Returns a `ServerResponse` ready for yielding to the server
+    pub fn try_process<F, E>(&self, mut callable: F) -> std::result::Result<ServerResponse, E>
+    where
+        F: FnMut(&Request) -> std::result::Result<Response, E>,
+    {
+        let http_response = callable(self.inner())?;
+        Ok(ServerResponse::new(http_response, self.id))
+    }
 }
 
 /// Wrapper over `Response` which adds an identification token.
@@ -584,6 +596,18 @@ impl HttpServer {
             client_connection.enqueue_response(response.response)?;
         }
         Ok(())
+    }
+
+    /// Adds the provided response to the outgoing buffer in the corresponding connection.
+    ///
+    /// # Errors
+    /// `IOError` is returned when an `epoll::ctl` operation fails.
+    /// `Underflow` is returned when `enqueue_response` fails.
+    pub fn try_respond<E>(
+        &mut self,
+        response: std::result::Result<ServerResponse, E>,
+    ) -> std::result::Result<Result<()>, E> {
+        Ok(self.respond(response?))
     }
 
     /// Accepts a new incoming connection and adds it to the `epoll` notification structure.
